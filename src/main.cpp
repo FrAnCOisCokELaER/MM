@@ -51,11 +51,11 @@ bool checkinputs(const imageparams & params, int choice) {
 	switch (choice) {
 		case 1:
 		case 2: 
-		case 4:
-			//if (params.d != 1) { std::cout << "Wrong image depth dimension, please select a 2D image" << std::endl; checker = false; }
+			if (params.d != 1) { std::cout << "Stack detected, 2D algoirthm will process image as a stack" << std::endl;}
 			if (params.w < 32 || params.h < 32) { std::cout << "Please specify a 32x32 2D image at least";}
 			break;
 		case 3:
+		case 4:
 			if (params.w < 32 || params.h < 32 || params.w < 32) { std::cout << "Please specify a 32x32x32 3D image at least"; }
 			break;
 		default: { std::cout << " No supported choice has been made , you will be asked to redo ..." << std::endl; checker = false; }
@@ -137,7 +137,7 @@ void promptMenu(	std::string & imagePath,
 	}
 }	
 
-int main (int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 
 	std::string imagePath;
@@ -146,18 +146,19 @@ int main (int argc, char *argv[])
 	/*
 	* Prompt Menu for User
 	*/
-	promptMenu(		imagePath,
-					choice,
-					L,
-					G,
-					K,
-					reconstruction);
+	promptMenu(imagePath,
+		choice,
+		L,
+		G,
+		K,
+		reconstruction);
 
 	/*
-	* Load image from input path : 
+	* Load image from input path :
 	*/
 
 	IUCHAR input = readData<unsigned char>(imagePath);
+	//init output
 	IUCHAR output = input;
 
 	/*

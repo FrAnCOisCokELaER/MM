@@ -1331,6 +1331,38 @@ void PO2D(	T *input_buffer,
 	}
 }
 
+template <class T>
+void filterOnLength(	std::queue<int> & queueCdown, 
+						std::vector<int> & flagI,
+						std::vector<int> & upstreamI,
+						std::vector<int> & downstreamI, 
+						std::vector<T> & originalI,
+						T threshold, int L) {
+
+		//check queueC if total lenght trought pixel fell down to L
+		while (!queueCdown.empty()) {
+			int in_queueC = queueCdown.front();
+			//compute lenght
+			int longest_path = upstreamI[in_queueC] + downstreamI[in_queueC] - 1;
+			//check longest path
+			if (longest_path < L) {
+				//write into output image ( not be part of a L path at higher level)
+				originalI[in_queueC] = threshold;
+				//desactivate pixel
+				flagI[in_queueC] &= ~(1 << 0);
+				//set his downstream and upstream lenght to 0
+				upstreamI[in_queueC] = 0;
+				downstreamI[in_queueC] = 0;
+				flagI[in_queueC] |= (1 << 3);
+			}
+			//set flag to 0
+			flagI[in_queueC] &= ~(1 << 2);
+			//set flag 10 to 0
+			queueCdown.pop();
+		}
+
+}
+
 //processing function
 template <class T>
 void PO2Dalternative(	T *input_buffer,
@@ -1361,7 +1393,7 @@ void PO2Dalternative(	T *input_buffer,
 	//the enqueuing process in Qq and Qc and also
 	//prevent deactivated pixels durin path propagation
 	//from being considered as a seed further in the program
-	flagI.resize(image_size, 0);
+	flagI.resize(image_size, (1<<3));
 	/***********flags description***************/
 	/* in flagI, 3 flags are used in this implementation :
 	/*         1            0
@@ -1372,7 +1404,8 @@ void PO2Dalternative(	T *input_buffer,
 	/*FIFO queue handling pixels during propagation*/
 	//std::queue<int> queueQ;
 	/*FIFO queue handling pixels that are updated during the propagation*/
-	std::queue<int> queueC;
+	std::queue<int> queueCup;
+	std::queue<int> queueCdown;
 
 	/**vectors containing image memory address
 	offset corresponding to a given orientation ****/
@@ -1409,11 +1442,6 @@ void PO2Dalternative(	T *input_buffer,
 
 	//seed pixel value
 	T threshold;
-	double temp_threshold = -1.0;
-	//longest path through a pixel
-	int longest_path = 0;
-	//pixel index in queueC
-	int in_queueC;
 	//pixel coordinate in row and col
 	int px_line_idx;
 	int px_col_idx;
@@ -1454,44 +1482,31 @@ void PO2Dalternative(	T *input_buffer,
 
 			} //end while
 
+#pragma omp parallel sections 
+			{
+#pragma omp section 
+				{
 					//perform propagation
-					propagatePathOnlist(seedList,
-					downstreamI,
-					flagI,
-					upstreamN,
-					downstreamN,
-					queueC);
-		
-
-					//update upstreamI changes
-					propagatePathOnlist(seedList,
-						upstreamI,
-						flagI,
-						downstreamN,
-						upstreamN,
-						queueC);
-
-			//check queueC if total lenght trought pixel fell down to L
-			while (!queueC.empty()) {
-				in_queueC = queueC.front();
-				//compute lenght
-				longest_path = upstreamI[in_queueC] +
-					downstreamI[in_queueC] - 1;
-				//check longest path
-				if (longest_path < L) {
-					//write into output image ( not be part of a L path at higher level)
-					originalI[in_queueC] = threshold;
-					//desactivate pixel
-					flagI[in_queueC] &= ~(1 << 0);
-					//set his downstream and upstream lenght to 0
-					upstreamI[in_queueC] = 0;
-					downstreamI[in_queueC] = 0;
-					flagI[in_queueC] |= (1 << 3);
+					propagatePathOnlist(seedList, downstreamI, flagI, upstreamN, downstreamN, queueCdown);
 				}
-				//set flag to 0
-				flagI[in_queueC] &= ~(1 << 2);
-				//set flag 10 to 0
-				queueC.pop();
+#pragma omp section 
+				{
+					//update upstreamI changes
+					propagatePathOnlist(seedList, upstreamI, flagI, downstreamN, upstreamN, queueCup);
+				}
+			}
+
+#pragma omp parallel sections 
+			{
+#pragma omp section 
+				{
+					filterOnLength<T>(queueCdown, flagI, upstreamI, downstreamI, originalI, threshold, L);
+				}
+#pragma omp section 
+				{
+					filterOnLength<T>(queueCup, flagI, downstreamI ,upstreamI, originalI, threshold, L);
+
+				}
 			}
 
 		}

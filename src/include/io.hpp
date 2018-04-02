@@ -125,10 +125,20 @@ template<class T>
 ImageBase<T>  readData(std::string  imagePath) {
 	imageparams params = parseImagePath(imagePath);
 	ImageBase<T> im(params.w, params.h, params.d);
-	readImageData<T>(im.m_data.data(),
-		imagePath,
-		params.w*params.h*params.d);
+	bool readOK = false;
+	while (!readOK) {
+		try {
+			readImageData<T>(im.m_data.data(), imagePath, params.w*params.h*params.d);
+			readOK = true;
+		}
+		catch (const std::ifstream::failure& e) {
+			std::cout << e.what() << std::endl;
+			std::cout << "Wrong image path please , re-enter a valid image path :" << std::endl;
+			std::cin >> imagePath;
+		}
+	}
 	return im;
 }
+
 
 #endif
