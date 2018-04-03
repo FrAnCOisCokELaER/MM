@@ -105,7 +105,7 @@ void createNeighbourhood(std::vector<int> const & orientation,
 
 }
 /**************************** Robust Path propagation from seed points *********************************************/
-inline void propagateRobustPath(		 	 int seed_index,
+void propagateRobustPath(		 	 int seed_index,
                       						 std::vector< int > & upList,
                       						 std::vector< int > & downList,                               
                       						 std::queue< int > & QueueC,
@@ -183,6 +183,90 @@ inline void propagateRobustPath(		 	 int seed_index,
         FlagI[upstream_from_seed] &= ~(1<<1);
     } //end while
  }
+
+//
+void propagateRobustPathOnList(	const std::list<int> & seedList,
+								std::vector< int > & upList,
+								std::vector< int > & downList,
+								std::queue< int > & QueueC,
+								std::queue< int>  & QueueQ,
+								std::vector< short > & FlagI,
+								std::vector< int> & DownstreamI) {
+
+	for (auto it = seedList.begin(); it != seedList.end(); ++it) {
+		int seed_index = (*it);
+		int upstream_from_seed;
+		int downstream_from_upstream;
+		int propagate_upstream;
+		//max lenght from downstream neighbours
+		int max_lenght;
+
+		//enqueue in Qq all neigbours of current px based on given direction
+		for (int i = 0; i < (int)upList.size(); ++i) {
+			upstream_from_seed = upList[i] + seed_index;
+			// if active and not in queueQ
+			if (FlagI[upstream_from_seed] & (1 << 0) &&
+				!(FlagI[upstream_from_seed] & (1 << 1))) {
+				//put in Qq
+				QueueQ.push(upstream_from_seed);
+				//flag
+				FlagI[upstream_from_seed] |= (1 << 1);
+			}
+			//if noise and not in queueQ
+			if (FlagI[upstream_from_seed] & (1 << 4) &&
+				!(FlagI[upstream_from_seed] & (1 << 1))) {
+				//put in Qq
+				QueueQ.push(upstream_from_seed);
+				//flag
+				FlagI[upstream_from_seed] |= (1 << 1);
+			}
+		}
+
+		while (!QueueQ.empty()) {
+			//get first queueC element 
+			upstream_from_seed = QueueQ.front();
+			max_lenght = -1;
+			for (int i = 0; i < (int)downList.size(); ++i) {
+				//get downstream pixel index
+				downstream_from_upstream = upstream_from_seed + downList[i];
+				//select max lenght 
+				if (DownstreamI[downstream_from_upstream] > max_lenght) {
+					max_lenght = DownstreamI[downstream_from_upstream];
+				}
+			}
+			//check changes in lenght
+			if ((max_lenght + 1) < DownstreamI[upstream_from_seed]) {
+				//if new lenght is smaller than previous,
+				//enqueue upstream pixels (active and noise)
+				DownstreamI[upstream_from_seed] = max_lenght + 1;
+				for (int i = 0; i < (int)upList.size(); ++i) {
+					propagate_upstream = upstream_from_seed + upList[i];
+					if (FlagI[propagate_upstream] & (1 << 0) &&
+						!(FlagI[propagate_upstream] & (1 << 1))) {
+						QueueQ.push(propagate_upstream);
+						FlagI[propagate_upstream] |= (1 << 1);
+					}
+					//robust part
+					if (FlagI[propagate_upstream] & (1 << 4) &&
+						!(FlagI[propagate_upstream] & (1 << 1))) {
+						QueueQ.push(propagate_upstream);
+						FlagI[propagate_upstream] |= (1 << 1);
+					}
+				}
+				//enqueue current neighbour in Qc 
+				if (!(FlagI[upstream_from_seed] & (1 << 2))) {
+					QueueC.push(upstream_from_seed);
+					FlagI[upstream_from_seed] |= (1 << 2);
+				}
+			}
+			//pop first element from queueQ
+			QueueQ.pop();
+			//to corresponding flagQ bit to 0
+			FlagI[upstream_from_seed] &= ~(1 << 1);
+		} //end while
+
+	}
+}
 //
 template <class T>
 bool pointer_value_comparison(const T *a, const T *b)
@@ -211,6 +295,331 @@ void sort_image_value(	std::vector<T> &originalI,
         	im_idx_sort[i] = (int) (sorted_ptr[i] - &originalI[0]);
 
 }
+
+//implemented for downstream search
+int gapPropagation(	int gapIdx, 
+					int G,
+					std::vector<short> & flagI, 
+					const std::vector<int> & down_neighbour ) {
+	
+	std::queue<int> queueN1;
+	std::queue<int> queueN2;
+	bool active_pixel_found_during_down_prop = false;
+	//init propagation
+	queueN1.push(gapIdx);
+	int nb_prop_down = 1;
+
+	while (nb_prop_down <= G && !(flagI[gapIdx] & (1 << 5))) {
+		while (!queueN1.empty()) {
+			int in_queueN1 = queueN1.front();
+
+			for (int i = 0; i < (int)down_neighbour.size(); ++i) {
+				int downstream_noise_px = in_queueN1 + down_neighbour[i];
+
+				if ((nb_prop_down < G) &&
+					!(flagI[downstream_noise_px] & (1 << 0)) &&  //inactive
+					!(flagI[downstream_noise_px] & (1 << 6)) && // not yet un queueN2
+					!(flagI[downstream_noise_px] & (1 << 5))) { // still possible to be a gap
+
+					queueN2.push(downstream_noise_px);
+					flagI[downstream_noise_px] |= (1 << 6);
+				}
+				//if downstream neighbour is active and number of propagation is not reached
+				if (flagI[downstream_noise_px] & (1 << 0) && nb_prop_down <= G) {
+					//save downstream iteration 
+					active_pixel_found_during_down_prop = true;
+					break;
+				}
+			}
+			//next queueN1 element
+			queueN1.pop();
+			
+			//optimisation => no need to continu the propagation
+			if (active_pixel_found_during_down_prop == true)
+				break;
+		}
+
+		//next propagation level
+		while (!queueN2.empty()) {
+			int in_queueN2 = queueN2.front();
+			queueN1.push(in_queueN2);
+			queueN2.pop();
+			flagI[in_queueN2] &= ~(1 << 6);
+		}
+
+		//optimisation => no need to continu the propagation
+		if (active_pixel_found_during_down_prop == true)
+			break;
+
+
+		nb_prop_down++;
+	}
+	//if no active pixel found until the maximum number of
+	//iteration
+	if (active_pixel_found_during_down_prop == false)
+		return G + 1;
+	else
+		return nb_prop_down;
+
+}
+
+//RPO 2D by orientation // alternative : deactivate once all pixels whose value == T
+template <class T>
+void RPO2Dalternative(	T* input_buffer, //input image
+						T* output_buffer, //ouput image
+						std::vector<int> & orientation, // orientation vector
+						int L, // path length 
+						int G, // gap length 
+						int reconstruction, // if == 1 THEN CLOSING AFTER THE OPENING , if == 0 ONLY OPENING
+						int dimx, // image dimensions
+						int dimy) {
+
+	//padding params
+	int nb_col_padded = dimx + 4;
+	int nb_row_padded = dimy + 4;
+	int image_size = nb_row_padded * nb_col_padded;
+
+	//creating and init temporaries buffers
+	std::vector<T> originalI(image_size, 0);
+	std::vector<int> downstreamI(image_size, 0);
+	std::vector<int> upstreamI(image_size, 0);
+	std::vector<short> flagI(image_size, (1 << 5) );
+	//vector of sorted index of the image
+	std::vector<int> im_idx_sort(image_size);
+
+	//FIFO queue init
+	std::queue< int > queueQ;
+	std::queue< int > queueC;
+
+	//neighbour's index vector init
+	std::vector< int > up_neighbour;
+	std::vector< int > down_neighbour;
+
+	T threshold;
+	T prev_threshold;
+	/***********flags description***************/
+	/* in flagI, 6 flags are used in this implementation :
+	/*         1            0
+	flag 0 : active / desactive
+	flag 1 : in queueQ / not in queueQ
+	flag 2 : in queueC / not in queueC
+	flag 3 : desactivated during propagation / not desactivated during propagation
+	flag 4 : noise / not noise
+	flag 5 : not noise at next level / can be noise at next level
+	flag 6 : temp flag for noise pixels research ( in queueN2)
+	*/
+	//
+	//copy input_buffer into originalI vector
+	for (int j = 0; j < dimy; j++) {
+		for (int i = 0; i < dimx; i++)  {
+			originalI[nb_col_padded*(j + 2) + (i + 2)] = input_buffer[dimx*(j)+(i)];
+			downstreamI[nb_col_padded*(j + 2) + (i + 2)] = L;
+			upstreamI[nb_col_padded*(j + 2) + (i + 2)] = L;
+			flagI[nb_col_padded*(j + 2) + (i + 2)] = (1 << 0);
+		}
+	}
+		
+	//create neighbourhood index from a given direction
+	createNeighbourhood(orientation, up_neighbour, down_neighbour, nb_col_padded);
+
+	//sorting image values
+	sort_image_value<T>(originalI,image_size,im_idx_sort);
+
+	//queue used to store noise pixel at different steps
+	std::queue< int > queueNoise;
+	std::queue< int > queueNoise_tmp;
+
+	//seed index
+	int i = 0;
+
+	while (i < image_size) {
+		//get seed pixel index and coordinate
+		int seed_index = im_idx_sort[i];
+		//get curr seed pixel value
+		if (flagI[seed_index] & (1 << 0)) {
+
+			threshold = originalI[seed_index];
+			std::list<int> seedList;
+			while (originalI[seed_index] <= threshold && i < image_size) {
+
+				if (flagI[seed_index] & (1 << 0)) { // put only active pixels
+					
+					flagI[seed_index] &= ~(1 << 0);
+					upstreamI[seed_index] = 0;
+					downstreamI[seed_index] = 0;
+
+					int px_line_idx = seed_index / nb_col_padded;
+					int px_col_idx = seed_index%nb_col_padded;
+
+					if (px_line_idx > 0 && px_line_idx <(nb_row_padded - 1) && px_col_idx > 0 && px_col_idx < (nb_col_padded - 1))
+						seedList.push_back(seed_index);
+				}
+				++i;
+				if (i < image_size)
+					seed_index = im_idx_sort[i];
+			} //end while
+
+			/****  some active pixels have just been deactivated => update previsous noise pixels status *****/
+			std::list<int> noiseSeed;
+			while (!queueNoise.empty()) {
+
+				int idx = queueNoise.front();
+				int nbpropdown = gapPropagation(idx, G, flagI, down_neighbour);
+				int nbpropup = gapPropagation(idx, G, flagI, up_neighbour);
+
+				if ((nbpropdown + nbpropup - 1) > G) {
+					//current pixel is not a noise pixel
+					flagI[idx] |= (1 << 5);  //optim will not be enqueued next
+					downstreamI[idx] = 0;
+					upstreamI[idx] = 0;
+					//add them in the seed list propagation 
+					noiseSeed.push_back(idx);
+				}
+				else
+				{
+					queueNoise_tmp.push(idx);
+				}
+				queueNoise.pop();
+			}	
+
+			//ping-ponging
+			while (!queueNoise_tmp.empty()) {
+				int temp = queueNoise_tmp.front();
+				queueNoise.push(temp);
+				queueNoise_tmp.pop();
+			}
+
+			/***************  path propagation from seed **************/
+			propagateRobustPathOnList(noiseSeed, up_neighbour, down_neighbour, queueC, queueQ, flagI, downstreamI);
+			propagateRobustPathOnList(noiseSeed, down_neighbour, up_neighbour, queueC, queueQ, flagI, upstreamI);
+
+
+			//check queueC if total lenght trought pixel fell down to L
+			while (!queueC.empty()) {
+				int in_queueC = queueC.front();
+				//compute lenght
+				int longest_path = upstreamI[in_queueC] + downstreamI[in_queueC] - 1;
+				//check longest path
+				if (longest_path < L) {
+					//is active pixel
+					if (flagI[in_queueC] & (1 << 0)) {
+						//write into output image ( not be part of a L path at higher level)
+						originalI[in_queueC] = threshold;
+						//desactivate pixel
+						flagI[in_queueC] &= ~(1 << 0);
+						//reset length
+						upstreamI[in_queueC] = 0;
+						downstreamI[in_queueC] = 0;
+						// set to 1 
+						//desactivated during propagation
+						//canno't be noise at next thtreshold
+						flagI[in_queueC] |= (1 << 3);
+						flagI[in_queueC] |= (1 << 5);
+					}
+					//if noise pixel
+					if (flagI[in_queueC] & (1 << 4)) {
+						//reset noise flag
+						flagI[in_queueC] &= ~(1 << 4);
+						//cannot be noise pixel at further level
+						flagI[in_queueC] |= (1 << 5);
+						//reset length
+						downstreamI[in_queueC] = 0;
+						upstreamI[in_queueC] = 0;
+						//id reconstruction is set to 1
+						if (reconstruction == 1)
+							originalI[in_queueC] = threshold;
+					}
+				}
+				//pop pixel from queueC
+				queueC.pop();
+				//set flag to 0
+				flagI[in_queueC] &= ~(1 << 2);
+			}
+
+			/*****noise pixel research on current threshold deactivated seedList ********/
+			auto it = seedList.begin();
+			while (it != seedList.end()) {
+				int idx = (*it);
+				int nbpropdown = gapPropagation((idx), G, flagI, down_neighbour);
+				int nbpropup = gapPropagation((idx), G, flagI, up_neighbour);
+
+			   if ( (nbpropdown + nbpropup - 1) <= G) {
+					//current pixel is a noise pixel
+				   queueNoise.push((idx));
+				   it = seedList.erase(it);
+				   flagI[(idx)] |= (1 << 4);
+				}
+				else {
+					//current pixel is not a noise pixel
+					flagI[(idx)] |= (1 << 5);  //optim will not be enqueued next threshold
+					downstreamI[(idx)] = 0;
+					upstreamI[(idx)] = 0;
+					++it;
+				}	
+			}
+
+			/***************  path propagation from seed **************/
+			propagateRobustPathOnList(seedList, up_neighbour, down_neighbour, queueC, queueQ, flagI, downstreamI);
+
+			propagateRobustPathOnList(seedList, down_neighbour, up_neighbour, queueC, queueQ, flagI, upstreamI);
+
+			//check queueC if total lenght trought pixel fell down to L
+			while (!queueC.empty()) {
+				int in_queueC = queueC.front();
+				//compute lenght
+				int longest_path = upstreamI[in_queueC] + downstreamI[in_queueC] - 1;
+				//check longest path
+				if (longest_path < L) {
+					//is active pixel
+					if (flagI[in_queueC] & (1 << 0)) {
+						//write into output image ( not be part of a L path at higher level)
+						originalI[in_queueC] = threshold;
+						//desactivate pixel
+						flagI[in_queueC] &= ~(1 << 0);
+						//reset length
+						upstreamI[in_queueC] = 0;
+						downstreamI[in_queueC] = 0;
+						// set to 1 
+						//desactivated during propagation
+						//canno't be noise at next thtreshold
+						flagI[in_queueC] |= (1 << 3);
+						flagI[in_queueC] |= (1 << 5);
+					}
+					//if noise pixel
+					if (flagI[in_queueC] & (1 << 4)) {
+						//reset noise flag
+						flagI[in_queueC] &= ~(1 << 4);
+						//cannot be noise pixel at further level
+						flagI[in_queueC] |= (1 << 5);
+						//reset length
+						downstreamI[in_queueC] = 0;
+						upstreamI[in_queueC] = 0;
+						//id reconstruction is set to 1
+						if (reconstruction == 1)
+							originalI[in_queueC] = threshold;
+					}
+				}
+				//pop pixel from queueC
+				queueC.pop();
+				//set flag to 0
+				flagI[in_queueC] &= ~(1 << 2);
+			}
+
+		}
+		else {
+			++i;
+		}
+	}
+
+	//copy output buffer
+	for (int j = 0; j<dimy; j++) {
+		for (int i = 0; i<dimx; i++) {
+			output_buffer[dimx*(j)+(i)] = originalI[(dimx + 4)*(j + 2) + (i + 2)];
+		}
+	}
+
+}
+
 //RPO 2D by orientation
 template <class T>
 	void RPO2D(			T* input_buffer, //input image
@@ -965,23 +1374,23 @@ void UNION_RPO2D(		T *input_buffer,
 	 {
 		#pragma omp section 
 	   { 
-		 RPO2D<T>(input_buffer,res1,orientation1,L,G,reconstruction,dimx,dimy);
+		 RPO2Dalternative<T>(input_buffer,res1,orientation1,L,G,reconstruction,dimx,dimy);
 		 std::cout<<"orientation1 1 0  : passed"<<std::endl;
 	   }
 	   #pragma omp section
 	   { 
-		   RPO2D<T>( input_buffer,res2,orientation2,L,G,reconstruction,dimx,dimy);
+		RPO2Dalternative<T>(input_buffer, res2, orientation2, L, G, reconstruction, dimx, dimy);
 		   std::cout<<"orientation2 0 1  : passed"<<std::endl;
 	   }
 	   #pragma omp section
 	   { 
-	       RPO2D<T>( input_buffer,res3,orientation3,L,G,reconstruction,dimx,dimy);
+		   RPO2Dalternative<T>(input_buffer, res3, orientation3, L, G, reconstruction, dimx, dimy);
 		   std::cout<<"orientation3 1 1 : passed"<<std::endl;
 	   }
 	   #pragma omp section
 	   { 
 			
-	       RPO2D<T>( input_buffer,res4,orientation4,L,G,reconstruction,dimx,dimy);
+		   RPO2Dalternative<T>(input_buffer, res4, orientation4, L, G, reconstruction, dimx, dimy);
 		   std::cout<<"orientation4 1 -1: passed"<<std::endl;
 	   }
 	 }

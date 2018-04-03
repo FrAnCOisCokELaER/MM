@@ -179,9 +179,9 @@ int main(int argc, char *argv[])
 										"-recons-" + std::to_string(reconstruction)+ ".raw", output);
 			break;
 		case 3: 
-					PO3D::UNION_PO3D<unsigned char>(input.m_data.data(), output.m_data.data(), L, input.m_W, input.m_H, input.m_D);
-					writeData<unsigned char>(imagePath + "_resPO3D-L-" + std::to_string(L) + ".raw", output);
-					break;
+			PO3D::UNION_PO3D<unsigned char>(input.m_data.data(), output.m_data.data(), L, input.m_W, input.m_H, input.m_D);
+			writeData<unsigned char>(imagePath + "_resPO3D-L-" + std::to_string(L) + ".raw", output);
+			break;
 		case 4 :
 			PO3D::UNION_RPO3D<unsigned char>(input.m_data.data(), output.m_data.data(), L, G, reconstruction, input.m_W, input.m_H, input.m_D);
 			writeData<unsigned char>(imagePath + "_resRPO3D-L-" +
