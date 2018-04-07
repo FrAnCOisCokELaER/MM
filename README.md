@@ -1,8 +1,12 @@
 # MM
 This repository contains the source code of path based mathematical morphology tools for 2D and 3D images. 
+
 (1)-2D complete path operators  => filter out features whose length < L
+
 (2)-2D robuts path operators  => idem as complete path but allow gaps into the path : G={1,2,3}
+
 (3)-3D complete path operators
+
 (4)-3D robust path operators
 
 Algorithm are runned on 4 and 7 orientations for 2D and 3D respectively, orientations are parallelized by using openMP.
