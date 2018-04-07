@@ -49,6 +49,18 @@ struct imageparams {
 	int d;
 };
 
+bool checkinputs(const imageparams & params, int choice);
+
+void promptMenu(	std::string & imagePath,
+					ImageBase<unsigned char> & im,
+					int & choice,
+					int & L,
+					int & G,
+					int & K,
+					int & reconstruction);
+
+imageparams parseImagePath(std::string imagePath);
+
 /* reader */
 template <class T>
 void writeImageData(const T *p_data,
@@ -85,35 +97,7 @@ void readImageData(	T *p_data,
 }
 
 
-/*
-	Parse Image Path  and return a struct containing size and bytes params
-*/
-imageparams parseImagePath(std::string imagePath) {
-	//filter out system path
-	imagePath.substr(0, imagePath.find_last_of("\\/"));
 
-	//find params : image format must be // imagename-"nbytes"-W-H-D
-	imageparams params;
-	std::string delimiter = "-";
-	std::string stringParams = imagePath.substr(imagePath.find_first_of('-') + 1); //nbytes-W-H-D
-
-	size_t pos = 0;
-	std::vector<std::string> vStringParams;
-
-	while (((pos = stringParams.find(delimiter)) != std::string::npos)) {
-		vStringParams.push_back(stringParams.substr(0, pos));
-		stringParams.erase(0, pos + delimiter.length());
-	}
-	vStringParams.push_back(stringParams);
-
-	//fill image params
-	params.type = std::atoi(vStringParams[0].c_str());
-	params.w = std::atoi(vStringParams[1].c_str());
-	params.h = std::atoi(vStringParams[2].c_str());
-	params.d = std::atoi(vStringParams[3].c_str());
-
-	return params;
-}
 
 template<class T>
 void writeData(std::string  imagePath, const ImageBase<T> & im ) {
